@@ -1,0 +1,71 @@
+%   Linear Registration without removing the background
+%% Get Reference Image
+%opens ui to select image to be used
+[baseFileName, folder]=uigetfile({'*.tif';'*.png';},'Select the reference Image'); % only shows .
+cd(folder);
+% saves selected image as KoshyAtlas variable
+KoshyAtlas=baseFileName;
+
+%% Get Moving Image
+[baseFileName1, folder]=uigetfile({'*.tif';'*.png';},'Select the moving Image');
+cd(folder);
+% saves selected image as MovingImage variable
+MovingImage=baseFileName1;
+%% Reduce Resolution
+level= .05; %factor at which the image resolutions are being reduced by
+%Reduce Tiff image resolution
+
+f=imread(KoshyAtlas);
+F=imresize(f,level);
+%Selects color layers 1-3
+fi=F(:,:,1:3);
+%Need to create a specified path based on the computer being used
+imwrite(fi,'C:\Users\Zach\Documents\MATLAB\fi.tif');
+
+m=imread(MovingImage);
+M=imresize(m,level);
+%Selects color layers 1-3
+mo=M(:,:,1:3);
+%Need to create a specified path based on the computer being used
+imwrite(mo,'C:\Users\Zach\Documents\MATLAB\mo.tif'); 
+%% Mirror
+%runs gui named Orientation
+run('Orientation');
+L = 10;
+% loops to pause script until the gui has been completed 
+while L==10
+    pause(2);
+end
+% when selecting no on the gui it writes the varaible L=1
+if L == 1 
+%Flip image over horizontal axis
+    mov=flip(mo,2);
+elseif L == 2
+%Flip over vertical axis
+    mov=flip(mo,3);
+else
+    mov=mo;
+end
+%% LR Tform
+fixed = rgb2gray(fi);
+moving = rgb2gray(mov);
+
+%creates a tform using multimodial setting
+[optimizer, metric] = imregconfig('multimodal');  
+%disp(optimizer);
+%Radius setting
+factor = 2; 
+optimizer.InitialRadius = optimizer.InitialRadius/factor; 
+%Maximum Iteration setting
+iterations = 300;
+optimizer.MaximumIterations = iterations;
+
+tform = imregtform(moving,fixed,'affine',optimizer,metric);
+
+Rfixed = imref2d(size(fixed));
+
+movingRegisteredRigid = imwarp(moving,tform,'OutputView',Rfixed);
+
+figure;
+imshowpair(movingRegisteredRigid, fixed);
+title('initial radius/2, max iterations = 300');
