@@ -11,61 +11,43 @@ KoshyAtlas=baseFileName;
 cd(folder);
 % saves selected image as MovingImage variable
 MovingImage=baseFileName1;
-%% Reduce Resolution
-level= .05; %factor at which the image resolutions are being reduced by
-%Reduce Tiff image resolution
+%% Removes 4th Color Layer
 
 f=imread(KoshyAtlas);
-F=imresize(f,level);
-%Selects color layers 1-3
-fi=F(:,:,1:3);
-%Need to create a specified path based on the computer being used
-imwrite(fi,'C:\Users\Zach\Documents\MATLAB\fi.tif');
+F=f(:,:,1:3); % selects the R G B color layers
+
 
 m=imread(MovingImage);
-M=imresize(m,level);
-%Selects color layers 1-3
-mo=M(:,:,1:3);
-%Need to create a specified path based on the computer being used
-imwrite(mo,'C:\Users\Zach\Documents\MATLAB\mo.tif'); 
-%% Mirror
-%runs gui named Orientation
-run('Orientation');
-L = 10;
-% loops to pause script until the gui has been completed 
-while L==10
-    pause(2);
-end
-% when selecting no on the gui it writes the varaible L=1
-if L == 1 
-%Flip image over horizontal axis
-    mov=flip(mo,2);
-elseif L == 2
-%Flip over vertical axis
-    mov=flip(mo,3);
-else
-    mov=mo;
-end
-%% LR Tform
-fixed = rgb2gray(fi);
-moving = rgb2gray(mov);
+M=m(:,:,1:3); % selects the R G B color layers
 
-%creates a tform using multimodial setting
+%% Setting up tform
+%puts images into greyscale
+fixed = rgb2gray(F); 
+moving = rgb2gray(M);
+
+%sets parameters of multimodial setting
 [optimizer, metric] = imregconfig('multimodal');  
-%disp(optimizer);
+
+%% These values may need to be changed since the image resolutions are not changing
+
 %Radius setting
-factor = 2; 
-optimizer.InitialRadius = optimizer.InitialRadius/factor; 
+factor = 2; %sets the factor of which the search radius is divided by
+optimizer.InitialRadius = optimizer.InitialRadius/factor;
+
+
 %Maximum Iteration setting
-iterations = 300;
+iterations = 300; %sets the maximum number of iterations
 optimizer.MaximumIterations = iterations;
 
-tform = imregtform(moving,fixed,'affine',optimizer,metric);
+%% Creates tform
+tform = imregtform(moving,fixed,'affine',optimizer,metric); %creates tform
 
-Rfixed = imref2d(size(fixed));
+%% View result
 
-movingRegisteredRigid = imwarp(moving,tform,'OutputView',Rfixed);
+Rfixed = imref2d(size(fixed)); %puts fixed image into the correct format for viewing result
+
+movingRegisteredRigid = imwarp(moving,tform,'OutputView',Rfixed); %warps moving image
 
 figure;
-imshowpair(movingRegisteredRigid, fixed);
+imshowpair(movingRegisteredRigid, fixed); % shows overlayed images
 title('initial radius/2, max iterations = 300');
