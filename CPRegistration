@@ -1,0 +1,103 @@
+function cpRegistrationAtlas
+%Two-Pass Manual Control Point Registration
+%By Thomas Bello
+%3 February 2015
+%Code to use Control Points to register two images. Uses a linear (affine)
+%transformation first, then a piecewise linear transformation. Outputs both
+%the intermediate and the final image, as well as the tforms and control
+%points used.
+
+clear
+clc
+
+%% Input Images
+% Use file browser to select and read in both moving and fixed images as
+% UINT8 arrays, then convert to RGB images
+input('Press Enter to select Fixed Image...');
+fixedImageName = uigetfile({'*.tif; *png; *.jpeg; *.jpg' 'Image Files'}, 'Select Fixed Image');    
+fixedImage = imread(fixedImageName);        
+finalFixedImage = RGBcheck(fixedImage);    
+
+input('Press Enter to select Moving Image...');
+movingImageName = uigetfile({'*.tif; *png; *.jpeg; *.jpg' 'Image Files'}, 'Select Moving Image');   
+movingImage = imread(movingImageName);      
+RGBMovingImage = RGBcheck(movingImage);     
+
+%% Affine Transformation
+% This portion uses control point registration to apply a linear (affine)
+% transformation to the moving image
+affinepointsFileName = '';
+input('Press Enter to load pre-existing AFFINE control points...');
+affinepointsFileName = uigetfile({'*.mat'}, 'Select Affine Control Points, or Press Cancel');
+if ~(affinepointsFileName == 0)
+    load(affinepointsFileName);
+end
+
+if ((exist('movingpointsaffine')) && (exist('fixedpointsaffine')))
+    [movingpointsaffine, fixedpointsaffine] = cpselect(RGBMovingImage,finalFixedImage, movingpointsaffine, fixedpointsaffine, 'Wait', true);       
+else
+    [movingpointsaffine, fixedpointsaffine] = cpselect(RGBMovingImage,finalFixedImage, 'Wait', true);       
+end
+tformaffine = fitgeotrans(movingpointsaffine, fixedpointsaffine, 'affine');                             
+outputSize = imref2d(size(finalFixedImage));        
+AffineMovingImage = imwarp(RGBMovingImage, tformaffine, 'OutputView', outputSize, 'FillValues', 0);
+
+%% Piecewise Linear Transformation
+% This portion uses control point registration to apply a piecewise linear
+% transformation to the previously affine-transformed image
+piecewisepointsFileName = '';
+input('Press Enter to load pre-existing PIECEWISE control points...');
+piecewisepointsFileName = uigetfile({'*.mat'}, 'Select Piecewise Control Points, or Press Cancel');
+if ~(piecewisepointsFileName == 0)
+    load(piecewisepointsFileName);
+end
+
+if ((exist('movingpointspiecewise')) && (exist('fixedpointspiecewise')))
+    [movingpointspiecewise, fixedpointspiecewise] = cpselect(AffineMovingImage,finalFixedImage, movingpointspiecewise, fixedpointspiecewise, 'Wait', true);       
+else
+    [movingpointspiecewise, fixedpointspiecewise] = cpselect(AffineMovingImage,finalFixedImage, 'Wait', true);       
+end
+tformpiecewise = fitgeotrans(movingpointspiecewise, fixedpointspiecewise, 'pwl');                             
+
+outputSize = imref2d(size(finalFixedImage));       
+FinalMovingImage = imwarp(AffineMovingImage, tformpiecewise, 'OutputView', outputSize, 'FillValues', 0);
+
+%% Assigning Names
+% Name the files to be saved, using the number in the original file name. Note,
+% filenames of images used must be of the form "*_##.ext", where ## is the atlas slice
+% number
+[~, number] = strtok(movingImageName, '_');
+[number, ~] = strtok(number, '.');
+affineMovingName = strcat(movingImageName, 'AFFINE', number, '.tif');
+finalMovingName = strcat(movingImageName, 'FINAL', number, '.tif');
+tformAffineName = strcat('tformAffine', number, '.mat');
+tformPiecewiseName = strcat('tformPiecewise', number, '.mat');
+prevAffinePointsName = strcat('previousControlPointsAffine', number, '.mat');
+prevPiecewisePointsName = strcat('previousControlPointsPiecewise', number, '.mat');
+
+%% Saving Files
+% Saves the images in .TIF format, and the tforms and control points used
+% in .MAT matlab variable format
+imwrite(AffineMovingImage, affineMovingName, 'tif');
+imwrite(FinalMovingImage, finalMovingName, 'tif');
+save(tformAffineName, 'tformaffine','-mat');
+save(tformPiecewiseName, 'tformpiecewise','-mat');
+save(prevAffinePointsName, 'movingpointsaffine', 'fixedpointsaffine', '-mat');
+save(prevPiecewisePointsName, 'movingpointspiecewise', 'fixedpointspiecewise', '-mat');
+
+imshowpair(finalFixedImage,FinalMovingImage,'falsecolor');      %Opens up an overlay of the fixed image and the moving image, using green and magenta to show the different images
+
+%% Function RGB Check
+% Function to convert grayscale images (2 dimensional array, N x M) to RGB images (3 dimensional, N x M x 3)
+function [finishedImage] = RGBcheck(image)
+    if size(size(image)) == [1 2]         %Check if image is grayscale. Grayscale images have size [N M], while RGB have size [N M 3]
+        image = repmat(image,1,1,3);      %Convert grayscale images to RGB
+    end
+    if size(image,3) == 4                %Checks for a fourth layer that some RGB images have, usually opacity for PNG images
+        image = image(:,:,1:3);          %Ignores fourth layer if it exists (usually is opacity for some images)
+    end
+    finishedImage = image;
+        
+end
+
+end
