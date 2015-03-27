@@ -1,0 +1,162 @@
+% Counting Infected cells, pixel range is modified to be appropriate AFTER registering the image
+clear;
+clc;
+
+%% Opening File and Checking MatLab Version
+[baseFileName, folder] = uigetfile('*.*', 'Specify an image file'); %Select image
+cd(folder);%Change folder
+selectedImage = 'My own image'; % Need for the if threshold selection statement later.
+fullImageFileName=baseFileName; %Set the fullimagefilename to the image(n)
+
+% Change the current folder to the folder of this m-file.
+% (The "cd" line of code below is from Brett Shoelson of The Mathworks.)
+if(~isdeployed)
+    cd(fileparts(which(mfilename))); % From Brett
+end
+
+%ver; % Display user's toolboxes in their command window.
+
+
+% Check that user has the Image Processing Toolbox installed.
+versionInfo = ver; % Capture their toolboxes in the variable.
+hasIPT = false;
+for k = 1:length(versionInfo)
+    if strcmpi(versionInfo(k).Name, 'Image Processing Toolbox') > 0
+        hasIPT = true;
+    end
+end
+if ~hasIPT
+    % User does not have the toolbox installed.
+    message = sprintf('Sorry, but you do not seem to have the Image Processing Toolbox.\nDo you want to try to continue anyway?');
+    reply = questdlg(message, 'Toolbox missing', 'Yes', 'No', 'Yes');
+    if strcmpi(reply, 'No')
+        % User said No, so exit.
+        return;
+    end
+end
+
+% Change the current folder to the folder of this m-file.
+if(~isdeployed)
+    cd(fileparts(which(mfilename)));
+end
+
+close all;
+
+%% Image Processing
+
+% Read in image into an array.
+[rgbImage storedColorMap] = imread(fullImageFileName);
+[rows columns numberOfColorBands] = size(rgbImage);
+% If it's monochrome (indexed), convert it to color.
+% Check to see if it's an 8-bit image needed later for scaling).
+if strcmpi(class(rgbImage), 'uint8')
+    % Flag for 256 gray levels.
+    eightBit = true;
+else
+    eightBit = false;
+end
+if numberOfColorBands == 1
+    if isempty(storedColorMap)
+        % Just a simple gray level image, not indexed with a stored color map.
+        % Create a 3D true color image where we copy the monochrome image into all 3 (R, G, & B) color planes.
+        rgbImage = cat(3, rgbImage, rgbImage, rgbImage);
+    else
+        % It's an indexed image.
+        rgbImage = ind2rgb(rgbImage, storedColorMap);
+        % ind2rgb() will convert it to double and normalize it to the range 0-1.
+        % Convert back to uint8 in the range 0-255, if needed.
+        if eightBit
+            rgbImage = uint8(255 * rgbImage);
+        end
+    end
+end
+
+
+% Extract out the color bands from the original image
+% into 3 separate 2D arrays, one for each color component.
+redBand = rgbImage(:, :, 1);
+greenBand = rgbImage(:, :, 2);
+blueBand = rgbImage(:, :, 3);
+
+fontSize = 13;
+
+%Set the color thresholds
+blueThresholdLow = 0;
+blueThresholdHigh = .35*255;
+greenThresholdLow = 0.02*255;
+greenThresholdHigh = 0.35*255;
+%redThresholdLow = 0.02*255;
+%redThresholdHigh = 0.6*255;
+
+
+% Now apply each color band's particular thresholds to the color band
+% Creates the binary masks that we will use to count the cells.
+% This doesn't use the red or green bands as blue is the easiest.
+%redMask = (redBand >= redThresholdLow) & (redBand <=redThresholdHigh);
+greenMask = (greenBand >= greenThresholdLow) & (greenBand <= greenThresholdHigh);
+blueMask = (blueBand >= blueThresholdLow) & (blueBand <= blueThresholdHigh);
+
+% Combine the masks to find where all 3 are "true."
+redObjectsMask = uint8(blueMask & greenMask);
+
+% Filter out small and large objects.
+
+smallestAcceptableArea = round(90 * 0.3965); % Keep areas only if they're bigger than this. Second number is scaling factor for image resizing.
+largestAcceptableArea = round(620 * 0.3965); % Keep areas only if they're smaller than this. Second number is scaling factor for image resizing.
+
+% Get rid of the smaller and larger objects
+redObjectsMask = uint8(xor(bwareaopen(redObjectsMask,largestAcceptableArea), bwareaopen(redObjectsMask, smallestAcceptableArea)));
+
+% Smooth the borders using morphological closing operation, imclose()
+structuringElement = strel('disk', 7);
+redObjectsMask = imclose(redObjectsMask, structuringElement);
+% Fill in any holes in the regions, since they are most likely red also.
+redObjectsMask = uint8(imfill(redObjectsMask, 'holes'));
+
+Mask2 = ~redObjectsMask;
+Mask2 = uint8(Mask2);
+
+%% Output Plots
+%This plots the masked image for review
+% subplot(2, 2, 1);
+% imshow(redObjectsMask,[]);
+% title('Red Objects Mask');
+% 
+% %this plots the mask over the original image to make sure the cells are
+% %being reviewed
+% subplot(2, 2, 2);
+% maskedrgbImage = uint8(zeros(size(redObjectsMask))); % Initialize
+% maskedrgbImage(:,:,1) = rgbImage(:,:,1) .* redObjectsMask;
+% maskedrgbImage(:,:,2) = rgbImage(:,:,2) .* redObjectsMask;
+% maskedrgbImage(:,:,3) = rgbImage(:,:,3) .* redObjectsMask;
+% imshow(maskedrgbImage);
+% title('Masked RGB Image');
+% 
+% subplot(2,2,3);
+% imshow(Mask2, []);
+% title('inverted mask');
+% 
+% subplot(2,2,4);
+% maskedrgbImage2 = uint8(zeros(size(Mask2))); % Initialize
+% maskedrgbImage2(:,:,1) = rgbImage(:,:,1) .* Mask2;
+% maskedrgbImage2(:,:,2) = rgbImage(:,:,2) .* Mask2;
+% maskedrgbImage2(:,:,3) = rgbImage(:,:,3) .* Mask2;
+% imshow(maskedrgbImage2);
+% title('Inv mask');
+
+%% Counting and Staining
+CC=bwconncomp(redObjectsMask,8);
+cellcount=CC.NumObjects
+
+cellLocs = CC.PixelIdxList;
+medians = cellfun(@median,cellLocs);
+medians = int32(medians);
+
+redBand(medians) = 255;
+greenBand(medians) = 255;
+blueBand(medians) = 0;
+
+stainedImage = cat(3, redBand, greenBand, blueBand);
+stainedImageName = strcat(fullImageFileName, 'STAINED', '.tif');
+imwrite(stainedImage, stainedImageName, 'tif');
+
