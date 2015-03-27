@@ -1,0 +1,79 @@
+%Atlas Mask Counting
+%By Thomas Bello
+%This program will use a prespecified Excel colormap, atlas image, and 
+%atlas mask to count the number of unmasked pixels in each region of the 
+%Alan Brain atlas.
+%Outputs a table that contains the number of pixels counted per region, as
+%well as the total number of pixels in the image.
+
+clear;
+clc;
+
+colortable = readtable('colormap.xlsx');
+numcolors = size(colortable,1);
+colortable.count = zeros(numcolors,1);
+RGBs = colortable{:,2:4};
+
+input('Press Enter to select Atlas Image...');
+atlasName = uigetfile({'*.tif; *png; *.jpeg; *.jpg' 'Image Files'}, 'Select Atlas Image');
+atlasImage = imread(atlasName);
+if size(atlasImage,3) < 3
+   display('Error: Atlas Image must be RGB image')
+   return
+elseif size(atlasImage,3) > 3
+    atlasImage = atlasImage(:,:,1:3);
+end
+
+
+input('Press Enter to select Colored, Registered Image...');
+regImageName = uigetfile({'*.tif; *png; *.jpeg; *.jpg' 'Image Files'}, 'Select Registered Image');
+regImage = imread(regImageName);
+
+if ~isequal(size(regImage), size(atlasImage))
+    if ( size(regImage,1) ~= size(atlasImage,1) ) || ( size(regImage,2) ~= size(atlasImage,2) )
+        display('Error: Image Sizes do not match')
+        return
+    elseif size(regImage,3) > size(atlasImage,3)
+        regImage = regImage(:,:,1:3);
+    elseif size(regImage,3) < size(atlasImage,3)
+        regImage(:,:,2) = regImage(:,:,1);
+        regImage(:,:,3) = regImage(:,:,1);
+    end
+end
+
+redStain = 255;
+greenStain = 255;
+blueStain = 0;
+
+redBand = regImage(:,:,1);
+greenBand = regImage(:,:,2);
+blueBand = regImage(:,:,3);
+
+redMask = (redBand == redStain);
+greenMask = (greenBand == greenStain);
+blueMask = (blueBand == blueStain);
+
+imageMask = uint8(redMask & greenMask & blueMask); 
+maskedImage = atlasImage .* repmat(imageMask,1,1,3);
+
+indices = find(all(maskedImage~=0,3));
+
+red = maskedImage(:,:,1);
+green = maskedImage(:,:,2);
+blue = maskedImage(:,:,3);
+
+cellColors = [red(indices), green(indices), blue(indices)];
+
+[~, location] = ismember(cellColors, RGBs, 'rows');
+
+for i = 1:size(RGBs,1)
+    cellTF = ismember(cellColors, RGBs(i,:),'rows');
+    colortable{i,5} = colortable{i,5} + sum(cellTF);
+end
+
+finaltable = colortable;
+finaltable(:,2:4) = [];
+totalcount = sum(sum(maskedImage));
+matchedcount = sum(finaltable{:,2});
+
+finaltable
